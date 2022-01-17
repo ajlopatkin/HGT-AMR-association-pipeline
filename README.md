@@ -1,8 +1,12 @@
-#Summary
-Combines hits from plasmidfinder (via abricate), card database ARGs (via abricate), mob_recon, and Mobile Element Finder to find MGEs with associated ARGs, and to isolate mobile plasmids with antibiotic resistance profiles. Provides diagrams of mobile plasmids with ARGs found in more than one input faster file. 
 
-#Usage
+## Summary
+
+Combines hits from plasmidfinder (via [abricate](https://github.com/tseemann/abricate)), card database ARGs (via [abricate](https://github.com/tseemann/abricate)), [MOBsuite](https://github.com/phac-nml/mob-suite), and [Mobile Element Finder](https://pypi.org/project/MobileElementFinder/) to find MGEs with associated ARGs, and to isolate mobile plasmids with antibiotic resistance profiles. Provides diagrams of mobile plasmids with ARGs found in more than one input faster file. 
+
+
+## Usage
 Example run:
+
 ```bash hgt_pipeline.sh path/to/input/fasta/folder path/to/existing/output/directory 0.8 80 80 80 80 -5 0.00001 1```
 
 
