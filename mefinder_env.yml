@@ -1,0 +1,12 @@
+name: mefinder_env
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - biopython=1.77=py38h4d0b108_1
+  - blast=2.6.0=boost1.64_2
+  - kma=1.3.3=hbbe82c9_0
+  - pip
+  - pip:
+    - MobileElementFinder
