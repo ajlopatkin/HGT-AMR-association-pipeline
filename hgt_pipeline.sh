@@ -33,10 +33,6 @@ e_mef=$8
 #Mob evalue: Float, min allowed 0.00001
 e_mob=$9
 
-#Visuals: 0 = no, 1 = yes
-visuals=$10
-
-
 
 FILES="$in_dir"/*.fasta
 
@@ -117,7 +113,7 @@ conda activate genomediagram_env
 
 echo compiling results...
 
-python hgt_analyze.py -d "$out_dir" -f "$in_dir" -v "$visuals"
+python hgt_analyze.py -d "$out_dir" -f "$in_dir" -v 1
 
 conda deactivate 
 
