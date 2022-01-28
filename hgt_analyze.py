@@ -6,7 +6,6 @@ Created on Thu Dec 2 15:29:23 2021
 @author: clairejohnson
 """
 
-from reportlab.lib import colors
 import argparse
 import os
 import pandas as pd
@@ -16,8 +15,6 @@ from Bio import SeqIO, SeqRecord
 from Bio.SeqFeature import SeqFeature, FeatureLocation
 from Bio.Graphics.GenomeDiagram import FeatureSet as GDFeatureSet, Diagram as GDDiagram, Track as GDTrack
 from reportlab.lib.units import cm
-from reportlab.lib import colors
-from reportlab.graphics.shapes import Rect
 from reportlab.pdfgen.canvas import Canvas
 import random
 
@@ -35,7 +32,7 @@ args_resist = {}
 
 def abricate_parser(in_file, db):
     df = pd.read_csv(in_file, '\t')
-    df["#FILE"] = df["#FILE"].str.split('/').str[-1]
+    df["#FILE"] = df["#FILE"].str.split('/').str[-1].str.replace('.fasta', '')
     df = df[["#FILE","SEQUENCE", "GENE", "DATABASE", "START", "END", "STRAND", "%IDENTITY", "%COVERAGE", "RESISTANCE"]]
     df.columns = ["file_id","contig_id", "name", "src", "start", "end", "strand", "identity", "coverage", "resistance"]
     
@@ -97,14 +94,13 @@ def mobtyper_parser(in_dir):
                 df = pd.concat([df, mob_df])
     return df
 
-def make_color_map(args_df):
-    random.seed(2)
+def make_color_map(args_df, feature_dict):
+    random.seed(6)
     
     #Make a dict for args and resistance
-    global args_resist
     args_resist = dict(zip(args_df['name'], args_df['resistance']))
     
-    #One color for each resistance profile
+    #Generate one color for each resistance profile
     resist_profiles = list(set(args_df['resistance'].to_list()))
     color_categories = [",".join(sorted(x.split(','))) for x in resist_profiles]
     col_list = []
@@ -116,12 +112,36 @@ def make_color_map(args_df):
     
         col = colors.toColor('hsl(' + str(r) + ',' + str(g) + '%,' + str(b) + '%)')
         if col not in col_list:
-            col.alpha = 0.7
+            col.alpha = 1
             col_list.append(col)
             r += step
             
-    global resist_map
     resist_map = dict(zip(color_categories, col_list))
+    
+    #Update colors in FeatureSets
+    for file_id,contigs in feature_dict.items():
+        for contig, FS_list in contigs.items():
+            for feature in FS_list[0].get_features():
+                feature.color = resist_map[args_resist[feature.name]]
+                
+    #Draw resistance profile color legend
+    longest = max(color_categories, key = lambda x: len(x))
+    canvas = Canvas(args.d + "/plasmid_diagrams/color_legend.pdf",pagesize=(len(longest) * 6, len(col_list) * cm))
+    y = x = 0
+    dy = cm
+    h = dy * .75 
+    w = cm
+    canvas.setFont("Helvetica",10)
+ 
+    for prof, col in resist_map.items():
+         canvas.setFillColor(col)
+         canvas.rect(x, y, w, h, fill=1)
+         canvas.setFillColor(colors.black)
+         canvas.drawString(x + 1.5 * cm, y + (h /2) - 2, prof)
+         y = y+dy
+    canvas.save()
+         
+    return feature_dict
     
     
 def make_full_output(full_df, visuals, plas_list):
@@ -130,7 +150,9 @@ def make_full_output(full_df, visuals, plas_list):
     mge_df_oth = pd.DataFrame(columns = ['file_id','contig_id', 'type', 'name','start', 'end', 'strand', 'src', 'inc_rep', 'mobility', 'ARGs','resistance', 'e_val', 'identity', 'coverage'])
 
     plas_file_map = pd.DataFrame(columns=['plasmid', 'file_id', 'contig_id'])
-    plas_resistance_summary = pd.DataFrame(columns=['plasmid', 'file_id'])
+    plas_resistance_summary = pd.DataFrame(columns=['plasmid', 'file_id', 'resistance'])
+    
+    full_args_df = pd.DataFrame(columns = ['ARG', 'resistance'])
     
     to_skip = []
     seqfeature_dict = {}
@@ -188,7 +210,7 @@ def make_full_output(full_df, visuals, plas_list):
                     
                     #Only mobilizable plasmids
                     if 'non-mobilizable' not in mobility:
-                        plas_resistance_summary.loc[len(plas_resistance_summary)] = [row['name'], row['file_id']]
+                        plas_resistance_summary.loc[len(plas_resistance_summary)] = [row['name'], row['file_id'], resist]
                         seen = False
                         #If a common, mobilizable plasmid, create feature sets
                         if visuals > 0 and row['name'] in plas_list:
@@ -196,18 +218,17 @@ def make_full_output(full_df, visuals, plas_list):
                             #Create empty feature sets if file:contig not in dict
                             if row.file_id in seqfeature_dict.keys() and row.contig_id not in seqfeature_dict[row.file_id].keys():
                                     seqfeature_dict[row.file_id][row.contig_id] = [GDFeatureSet(name='ARGs'),
-                                                                                   GDFeatureSet(name='Base'),
-                                                                                   GDFeatureSet(name='MGEs')]
+                                                                                  GDFeatureSet(name='MGEs')]
                             elif row.file_id not in seqfeature_dict.keys():
                                 seqfeature_dict[row.file_id] = {}
                                 seqfeature_dict[row.file_id][row.contig_id] = [GDFeatureSet(name='ARGs'),
-                                                                               GDFeatureSet(name='Base'),
                                                                                GDFeatureSet(name='MGEs')]
                             else:
                                 seen = True
                             if not seen:
                                 #Remove repeat args
                                 args_df = args_df.drop_duplicates(subset=['name', 'start', 'end'])
+                                full_args_df = pd.concat([full_args_df, args_df[['name', 'resistance']]])
                                 
                                 #Add feature for each ARG 
                                 for a_idx, a_row in args_df.iterrows():
@@ -229,26 +250,10 @@ def make_full_output(full_df, visuals, plas_list):
                                         label_strand = 1,
                                         name = a_row['name'], 
                                         sigil = "ARROW", 
-                                        color = resist_map[args_resist[a_row['name']]], 
+                                        color = colors.blue, 
                                         arrowhead_length=0.25,
                                         arrowshaft_length=0.5
                                         )
-                                    #Add to box track
-                                    seqfeature_dict[row.file_id][row.contig_id][1].add_feature(
-                                        SeqFeature(
-                                            FeatureLocation(
-                                                int(a_row.start), int(a_row.end), a_row.strand
-                                                )
-                                            ),
-                                        label=True, 
-                                        label_position = 'middle', 
-                                        label_angle = 45, 
-                                        name = a_row['name'], 
-                                        sigil = "BOX", 
-                                        color = resist_map[args_resist[a_row['name']]], 
-                                        arrowhead_length=0.25
-                                        )
-        
                                 #Identify MGEs on plasmid
                                 other_mge_df = sub_df[sub_df['type']!= 'ARG']
                                 other_mge_df = other_mge_df[other_mge_df['type']!= 'plasmid']
@@ -263,10 +268,10 @@ def make_full_output(full_df, visuals, plas_list):
                                                 )
                                             ),
                                         label=True, 
-                                        label_position = 'left', 
-                                        label_strand = 0,
-                                        label_angle = 0, 
-                                        name = m_row['type'] + ": " + m_row['name'], 
+                                        label_position = 'middle', 
+                                        label_strand = 1,
+                                        label_angle = 45, 
+                                        name = m_row['name'].split(';')[0], 
                                         color = colors.Color(1, 1, 0, alpha=0.3), 
                                         sigil = "BOX"                               
                                         )
@@ -304,17 +309,22 @@ def make_full_output(full_df, visuals, plas_list):
     mge_df_plas = mge_df_plas.drop_duplicates(subset = ['file_id', 'contig_id'])
     
     #Save summary counts
-    plas_resistance_summary = plas_resistance_summary.drop_duplicates()
+    plas_resistance_summary = plas_resistance_summary.drop_duplicates(subset=['plasmid', 'file_id'])
+    plas_resistance_summary['resistance'] = plas_resistance_summary['resistance'] .str.split(',')
+    plas_resistance_profiles = plas_resistance_summary.groupby(['plasmid'], as_index=False).agg({'resistance': (lambda x: str(dict(collections.Counter([drug for row in x for drug in row]).most_common(5))).strip('{}').replace('\'', '')), 'file_id': (lambda x: ", ".join(x)),}) #if v > .75 * len(collections.Counter([drug for row in x for drug in row]))])
+
     plas_resistance_summary = plas_resistance_summary['plasmid'].value_counts()
     plas_resistance_summary = plas_resistance_summary.to_frame()
     plas_resistance_summary.columns = ["num. strains"]
     plas_resistance_summary.index.rename('plasmid', inplace=True)
-    plas_resistance_summary.to_csv(parent_dir + '/mobile_resistant_plasmids.csv')
+    plas_resistance_summary.to_csv(parent_dir + '/pre_merge.csv')
+    plas_resistance_summary = pd.merge(plas_resistance_summary, plas_resistance_profiles, on=['plasmid'], how='left')
+    plas_resistance_summary.to_csv(args.d + '/mobile_resistant_plasmids.csv')
     
     
 
     
-    return pd.concat([mge_df_plas, mge_df_oth]).sort_values(by = ["file_id", "contig_id", "start"]), seqfeature_dict, plas_file_map, plas_resistance_summary
+    return pd.concat([mge_df_plas, mge_df_oth]).sort_values(by = ["file_id", "contig_id", "start"]), seqfeature_dict, plas_file_map, plas_resistance_summary, full_args_df
 
 def make_plasmid_output(full_df):
     plas_df = pd.DataFrame(columns = ['file_id','contig_id', 'plasmid', 'inc_rep', 'ARGs', 'resistance', 'mobility','MGEs','src'])
@@ -362,9 +372,9 @@ def make_visuals(input_dir, feature_dict, contig_df):
     
     #For each strain in contig_df, add tracks for all contigs
     for file in os.listdir(input_dir):
-
-            #Extract file_id - CHANGE
-            file_id = file.split('.')[0].split('_')[0]
+            print(file)
+            #Extract file_id 
+            file_id = file.split('.')[0]
             if file_id in contig_df['file_id'].to_list():
                 print('Strain:', file_id)
                 #Reduce df to relevant contigs for this strain
@@ -383,28 +393,31 @@ def make_visuals(input_dir, feature_dict, contig_df):
                             print('Current plasmid:', plasmid)
                             #Create contig tracks and add feature sets
                             
-                            arg_track = GDTrack(name= file_id+ ":" + record.id,  
+                            arg_track = GDTrack(name= file_id+ ":" + record.id, 
                                                 greytrack=1, 
-                                                greytrack_labels=1, 
-                                                scale = 1, 
                                                 axis_labels=1)
+                            arg_track.add_set(feature_dict[file_id][record.id][1])
                             arg_track.add_set(feature_dict[file_id][record.id][0])
-                            arg_track.add_set(feature_dict[file_id][record.id][2])
+                            feature_dict[file_id][record.id][2].add_feature(
+                                        SeqFeature(
+                                            FeatureLocation(
+                                                len(record)-4, len(record) - 1,
+                                                )
+                                            ),
+                                        label=True, 
+                                        label_position = 'right', 
+                                        label_angle = 0, 
+                                        name = 'End of contig: ' + str(len(record)), 
+                                        sigil = "BOX", 
+                                        color = colors.red
+                                        )
                             
-                          #  mge_track = GDTrack(name= file_id+ ":" + record.id + "–MGEs" , start=0, end=len(record) )
-                           # mge_track.add_set(feature_dict[file_id][record.id][2])
-                            
-                            #base_ft_track = GDTrack(name=file_id+ ":" + record.id, start=0, end=len(record), greytrack=1)
-                            #base_ft_track.add_set(feature_dict[file_id][record.id][1])
-                            
+
                             #Add contig tracks to plasmid diagram
                             top = count_dict[plasmid]
                             print('Adding to ' + str(top) + ' level')
                             if plasmid not in diagram_dict.keys():
                                 diagram_dict[plasmid] = GDDiagram(name=plasmid)
-                            
-                        #    diagram_dict[plasmid].add_track(mge_track, track_level=top)
-                            #diagram_dict[plasmid].add_track(base_ft_track, track_level=top+1)
                             diagram_dict[plasmid].add_track(arg_track, track_level=top)
                             count_dict[plasmid] += 2
                     
@@ -421,13 +434,12 @@ def make_visuals(input_dir, feature_dict, contig_df):
        
         
 def main():
-    print("Running")
     
     prog_list = os.listdir(parent_dir)
     full_df = pd.DataFrame(columns = ['file_id','contig_id', 'type', 'name','start', 'end', 'strand', 'src', 'inc_rep', 'mobility', 'resistance', 'e_val', 'identity', 'coverage'])
     cur_df = None
     for prog in prog_list:
-        print(prog)
+        print('Retrieving ' + prog + ' output')
         if prog in ['card', 'ncbi', 'resfinder', 'plasmidfinder']:
             in_file = parent_dir + '/' + prog + '/' + prog + '_results.txt'
             cur_df = abricate_parser(in_file, prog)
@@ -446,11 +458,7 @@ def main():
     full_df = full_df.sort_values(by = ["file_id", "contig_id", "start"])
     full_df = full_df.drop_duplicates()
     full_df.to_csv(args.d + "/compiled_output/all_hits.csv")
-    
-    args_df = full_df[full_df['type'] == 'ARG']
-    args_df = args_df.drop_duplicates()
-    make_color_map(args_df)
-    print(resist_map)
+
     #List of all mobilizable plasmids occuring in >= threshold strains
     plas_list = full_df[full_df['type'] == 'plasmid'].drop_duplicates(subset=['name', 'file_id'])
     plas_list = plas_list[plas_list['mobility'] != 'non-mobilizable'].groupby('name', as_index = False).agg({'file_id': list})
@@ -458,7 +466,8 @@ def main():
     plas_list = list(plas_list['name'])
 
     
-    mge_df, feature_dict, contig_df, plas_summary = make_full_output(full_df, args.v, plas_list)
+    mge_df, feature_dict, contig_df, plas_summary, full_args_df = make_full_output(full_df, args.v, plas_list)
+
     mge_df.to_csv(args.d + "/compiled_output/all_mges.csv")
     
     plasmid_df = make_plasmid_output(mge_df)
@@ -469,11 +478,11 @@ def main():
     
     
     if args.v > 0:
-        vis_to_make = plas_summary[plas_summary['num. strains'] >= threshold].index.to_list()
+        vis_to_make = plas_summary[plas_summary['num. strains'] >= threshold]['plasmid'].to_list()
         contig_df = contig_df[contig_df['plasmid'].isin(vis_to_make)]
-        print(pd.unique(contig_df['plasmid']))
-
+        feature_dict = make_color_map(full_args_df, feature_dict)
         make_visuals(input_dir, feature_dict, contig_df)
+        
 
 if __name__ == '__main__':
     main()
