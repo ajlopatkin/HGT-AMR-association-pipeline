@@ -164,7 +164,7 @@ def make_full_output(full_df, visuals, plas_list):
 
             #Reduce to args in node
             args_df = sub_df[sub_df['type'] == 'ARG']
-            args = []
+            argenes = []
             resist = []
 
             #Reduce to same MGE type
@@ -173,7 +173,7 @@ def make_full_output(full_df, visuals, plas_list):
             #Aggregate all args and resistance if plasmid
             if row.type == 'plasmid':
                 
-                args = ",".join(set(list(args_df['name'])))
+                argenes = ",".join(set(list(args_df['name'])))
                 resist = ",".join(set(list(args_df['resistance'])))
                 row.start = '-'
                 row.end = '-'
@@ -188,7 +188,7 @@ def make_full_output(full_df, visuals, plas_list):
                 src = ",".join(set(list(non_args_df['src'])))
 
                 #if ARGs found on plasmid, add to mge output and summary df
-                if len(args) > 0:
+                if len(argenes) > 0:
                     
                     new_row = [row['file_id'], 
                                row.contig_id, 
@@ -200,7 +200,7 @@ def make_full_output(full_df, visuals, plas_list):
                                src,
                                inc_rep, 
                                mobility, 
-                               args, 
+                               argenes, 
                                resist, 
                                e_val, 
                                identity, 
@@ -287,7 +287,7 @@ def make_full_output(full_df, visuals, plas_list):
 
                 for s_idx, s_row in args_df.iterrows():
                     if int(s_row.start) in range(int(row['start']) - 31000, int(row['start']) + 31000) or int(s_row['end']) in range(int(row['end']) - 31000, int(row['end']) + 31000):
-                        [args.append(x) for x in s_row['name'].split(';')]
+                        [argenes.append(x) for x in s_row['name'].split(';')]
                         [resist.append(x) for x in s_row['resistance'].split(';')]
 
                 #Also condense MGEs of same type with nonzero overlap
@@ -301,7 +301,7 @@ def make_full_output(full_df, visuals, plas_list):
                         coverage.append(n_row.coverage)
                         identity.append(n_row.identity)
                         e_val.append(n_row.e_val)
-                if len(args) > 0:
+                if len(argenes) > 0:
                     new_row = [row['file_id'], row.contig_id, row['type'],",".join(set(name)), row.start, row.end, row.strand, ",".join(set(src)), row.inc_rep, row.mobility, ",".join(set(args)), ",".join(set(resist)), ",".join(e_val), ",".join(identity), ",".join(coverage)]
                     mge_df_oth.loc[len(mge_df_oth)] = new_row
 
@@ -477,11 +477,16 @@ def main():
     plasmids_by_strain.to_csv(args.d + "/compiled_output/plasmids_by_strain.csv")
     
     
-    if args.v > 0:
+    if args.v > 0 and len(full_args_df)>0:
         vis_to_make = plas_summary[plas_summary['num. strains'] >= threshold]['plasmid'].to_list()
         contig_df = contig_df[contig_df['plasmid'].isin(vis_to_make)]
         feature_dict = make_color_map(full_args_df, feature_dict)
         make_visuals(input_dir, feature_dict, contig_df)
+    elif len(contig_df) > 0:
+        print("No antibiotic resistance genes found")
+        make_visuals(input_dir, feature_dict, contig_df)
+    else:
+        print("No mobile elements found.")
         
 
 if __name__ == '__main__':
