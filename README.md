@@ -9,8 +9,7 @@ Currently, MobileElementFinder does not install correctly, and will fail during 
   - Activate MEfinder_env
   - Clone the MEfinder source from https://bitbucket.org/mhkj/mge_finder.git
   - Edit the MEfinder file setup.cfg to delete the dependency on `setuptools-markdown`
-  - From the terminal, run `pip install .` from the folder containing the MEfinder source
-
+  - From the terminal, `cd` into the MEFinder folder, and run `pip install .`
 ## Usage
 Example run:
 
