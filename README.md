@@ -3,6 +3,13 @@
 
 Combines hits from plasmidfinder (via [abricate](https://github.com/tseemann/abricate)), card database ARGs (via [abricate](https://github.com/tseemann/abricate)), [MOBsuite](https://github.com/phac-nml/mob-suite), and [Mobile Element Finder](https://pypi.org/project/MobileElementFinder/) to find MGEs with associated ARGs, and to isolate mobile plasmids with antibiotic resistance profiles. Provides diagrams of mobile plasmids with ARGs found in more than one input faster file. 
 
+## Install
+Currently, MobileElementFinder does not install correctly, and will fail during pip install. In order to correct this, do the following:
+  - Create MEfinder_env per the conda YAML file, which will fail
+  - Activate MEfinder_env
+  - Clone the MEfinder source from https://bitbucket.org/mhkj/mge_finder.git
+  - Edit the MEfinder file setup.cfg to delete the dependency on `setuptools-markdown`
+  - From the terminal, run `pip install .` from the folder containing the MEfinder source
 
 ## Usage
 Example run:
